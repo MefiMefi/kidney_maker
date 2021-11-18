@@ -3,55 +3,100 @@ import logging
 import pandas as pd
 
 
-def main():
-    excel_reader = pd.ExcelFile("tables/诚2团妈位表.xlsx")
+def kidney_maker(source_path, target_dir):
+    df_sort, df_price, df_origin = xlsx_read_and_preprocess(path)
+    detail_df, sort_df = sort_table(df_sort)
+    price_df = adjust_price(df_price)
+    origin_df = None if df_origin is None else get_original_bill(df_origin)
+    bill_df = calc_total_price(sort_df, price_df, detail_df, origin_df)
+    bill_df = format_kidney_table(bill_df)
+    with pd.ExcelWriter(target_dir) as xlsx_writer:
+        bill_df.to_excel(xlsx_writer, sheet_name="肾表", )
+    # excel_reader = pd.ExcelFile("tables/诚2团妈位表.xlsx")
+    # sheet_names = excel_reader.sheet_names
+    # df_sort = excel_reader.parse(sheet_name=sheet_names[0], header=None)
+    # df_price = excel_reader.parse(sheet_name=sheet_names[1], header=None)
+    # df_origin = excel_reader.parse(sheet_name=sheet_names[2], header=None)
+    # df_origin.columns = ["buyer", "original_bill"]
+    #
+    # detail_df, sort_df = sort_table_pld(df_sort)
+    # price_dict = adjust_price_pld(df_price)
+    #
+    # df_bill = calc_total_price_pld(sort_df, price_dict)
+    # df_all = pd.merge(df_bill, df_origin, how="outer", on="buyer")
+    # df_all["bill"].fillna(0, inplace=True)
+    # df_all["original_bill"].fillna(0, inplace=True)
+    # df_all["additional_bill"] = df_all["bill"] - df_all["original_bill"]
+    # df_all["label"] = df_all["additional_bill"].map(lambda x: "退" if x < 0 else ("补" if x > 0 else ""))
+    # df_out = df_all[['buyer', 'detail', 'count', 'bill', 'original_bill', 'additional_bill',
+    #                  'label']]
+    # df_out.columns = ["CN", "明细", "计数", "总价", "原肾", "退补金额", "退补"]
+    # df_out.to_excel("诚2团_bill.xlsx")
+
+
+def xlsx_read_and_preprocess(path):
+    excel_reader = pd.ExcelFile(path)
     sheet_names = excel_reader.sheet_names
-    df_sort = excel_reader.parse(sheet_name=sheet_names[0], header=None)
-    df_price = excel_reader.parse(sheet_name=sheet_names[1], header=None)
-    df_origin = excel_reader.parse(sheet_name=sheet_names[2], header=None)
-    df_origin.columns = ["buyer", "original_bill"]
+    try:
+        df_sort = excel_reader.parse(sheet_name=sheet_names[0], header=None)
+    except:
+        print("排表传入错误")
 
-    detail_df, sort_df = sort_table_muti(df_sort)
-    price_dict = adjust_price_muti(df_price)
+    try:
+        df_price = excel_reader.parse(sheet_name=sheet_names[1], header=None)
+    except:
+        print("调价表传入错误")
 
-    df_bill = calc_total_price_muti(sort_df, price_dict)
-    df_all = pd.merge(df_bill, df_origin, how="outer", on="buyer")
-    df_all["bill"].fillna(0, inplace=True)
-    df_all["original_bill"].fillna(0, inplace=True)
-    df_all["additional_bill"] = df_all["bill"] - df_all["original_bill"]
-    df_all["label"] = df_all["additional_bill"].map(lambda x: "退" if x < 0 else ("补" if x > 0 else ""))
-    df_out = df_all[['buyer', 'detail', 'count', 'bill', 'original_bill', 'additional_bill',
-                     'label']]
-    df_out.columns = ["CN", "明细", "计数", "总价", "原肾", "退补金额", "退补"]
-    df_out.to_excel("诚2团_bill.xlsx")
+    try:
+        df_origin = excel_reader.parse(sheet_name=sheet_names[2], header=None)
+    except:
+        df_origin = None
+
+    excel_reader.close()
+
+    return df_sort, df_price, df_origin
+
+
+def make_details(type, idol, count):
+    type = str(type)
+    idol = str(idol)
+    count = str(count)
+    if type == "":
+        details = "{}:{}".format(idol, count)
+    else:
+        details = "{}-{}:{}".format(type, idol, count)
+    return details
 
 
 def sort_table(df):
-    df.rename(columns={0: "idol"}, inplace=True)
+    df.rename(columns={0: "type", 1: "idol"}, inplace=True)
+    df["type"].fillna("", inplace=True)
+    df.dropna(axis=1, how="all", inplace=True)
+    df.dropna(axis=0, how="all", inplace=True)
+
     df_long = pd.DataFrame()
-    for i in range(1, (len(df.columns))):
+    for i in range(2, (len(df.columns))):
         df.rename(columns={i: "buyer_{}".format(i)}, inplace=True)
-        tmp_df = df[["idol", "buyer_{}".format(i)]]
-        tmp_df.columns = ["idol", "buyer"]
+        tmp_df = df[["type", "idol", "buyer_{}".format(i)]]
+        tmp_df.columns = ["type", "idol", "buyer"]
         df_long = pd.concat([df_long, tmp_df], ignore_index=True)
     df_long["count"] = 1
-    df_count = df_long.groupby(["buyer", "idol"], as_index=False).sum()
+    df_count = df_long.groupby(["type", "idol", "buyer"], as_index=False).sum()
     df_detail = df_count.copy()
-    df_detail["detail"] = df_detail.apply(lambda x: "{}:{}".format(x["idol"], x["count"]), axis=1)
-    df_detail = df_detail[["buyer", "detail"]]
-    df_detail = df_detail.groupby('buyer')['detail'].apply(lambda x: x.str.cat(sep=',')).reset_index()
+    df_detail["detail"] = df_detail.apply(lambda x: make_details(x["type"], x["idol"], x["count"])
+                                          , axis=1)
+    df_detail = df_detail[["buyer", "type", "detail"]]
+    df_detail = df_detail.groupby('buyer')['detail'].apply(lambda x: x.str.cat(sep=' ,')).reset_index()
     df_sum = df_count[["buyer", "count"]].groupby("buyer", as_index=False).sum()
     df_out = pd.merge(df_detail, df_sum)
-    print(df_out)
-    # df_out["price"] = df_out["count"] * price
-    # df_out.columns = ["CN", df_name + "明细", df_name + "总计"]
+
     return df_out, df_count
 
 
-def sort_table_muti(df):
+def sort_table_pld(df):
     df.rename(columns={0: "version", 1: "type", 2: "idol"}, inplace=True)
     df_long = pd.DataFrame()
-    df["type"].fillna("-",inplace=True)
+    df["type"].fillna("-", inplace=True)
     for i in range(3, (len(df.columns))):
         df.rename(columns={i: "buyer_{}".format(i)}, inplace=True)
         tmp_df = df[["version", "type", "idol", "buyer_{}".format(i)]]
@@ -71,20 +116,21 @@ def sort_table_muti(df):
 
     # df_out["price"] = df_out["count"] * price
     # df_out.columns = ["CN", df_name + "明细", df_name + "总计"]
-    print(df_count[df_count["version"]=="追忆"])
+    print(df_count[df_count["version"] == "追忆"])
     return df_out, df_count
 
 
 def adjust_price(df):
-    df.columns = ["idol", "avg", "adj"]
+    df.columns = ["type", "idol", "avg", "adj"]
+    df["adj"].fillna(0, inplace=True)
+    df["avg"].fillna(0, inplace=True)
+    df["type"].fillna("", inplace=True)
     df["new"] = df["avg"] + df["adj"]
-    dict_ = df[["idol", "new"]].to_dict(orient="records")
-    dict_ = {x["idol"]: x["new"] for x in dict_}
-    print(dict_)
-    return dict_
+
+    return df[["type", "idol", "new"]]
 
 
-def adjust_price_muti(df, special_key="签", normal_keys=["花前", "花后"], unique_key="追忆"):
+def adjust_price_pld(df, special_key="签", normal_keys=["花前", "花后"], unique_key="追忆"):
     if len(df.columns) < 5:
         df["adj"] = 0
     df.columns = ["version", "type", "idol", "avg", "adj"]
@@ -112,22 +158,67 @@ def adjust_price_muti(df, special_key="签", normal_keys=["花前", "花后"], u
     return price_dict_df
 
 
-def calc_total_price(sort_df, price_dict):
-    sort_df["bill"] = sort_df.apply(lambda x: x["count"] * price_dict[x["idol"]], axis=1)
-    print(sort_df)
-
-    df_detail = sort_df.copy()
-    df_detail["detail"] = df_detail.apply(lambda x: "{}:{}".format(x["idol"], x["count"]), axis=1)
-    df_detail = df_detail[["buyer", "detail"]]
-    df_detail = df_detail.groupby('buyer')['detail'].apply(lambda x: x.str.cat(sep=',')).reset_index()
-    df_sum = sort_df[["buyer", "count"]].groupby("buyer", as_index=False).sum()
-    df_bill = sort_df[["buyer", "bill"]].groupby("buyer", as_index=False).sum()
-    df_out = pd.merge(df_detail, df_sum)
-    df_out = pd.merge(df_out, df_bill)
-    return df_out
+def get_original_bill(df):
+    df.rename(columns={0: "buyer", 1: "original_bill"}, inplace=True)
+    print(df)
+    return df
 
 
-def calc_total_price_muti(sort_df, price_dict):
+def calc_total_price(sort_df, price_df, detail_df, origin_df):
+    sort_df = pd.merge(sort_df, price_df, how="outer", on=["type", "idol"])
+
+    sort_df["bill"] = sort_df.apply(lambda x: x["count"] * x["new"], axis=1)
+    sort_df["count"].fillna(0, inplace=True)
+    # bill_df = sort_df[["buyer","bill"]]
+    # # df_detail = sort_df.copy()
+    # # df_detail["detail"] = df_detail.apply(lambda x: "{}:{}".format(x["idol"], x["count"]), axis=1)
+    # # df_detail = df_detail[["buyer", "detail"]]
+    # # df_detail = df_detail.groupby('buyer')['detail'].apply(lambda x: x.str.cat(sep=',')).reset_index()
+    # # df_sum = sort_df[["buyer", "count"]].groupby("buyer", as_index=False).sum()
+    bill_df = sort_df[["buyer", "bill"]].groupby("buyer", as_index=False).sum()
+    bill_df = pd.merge(detail_df, bill_df, how="outer")
+
+    bill_df["count"].fillna(0, inplace=True)
+    bill_df["bill"].fillna(0, inplace=True)
+    if origin_df is not None:
+        bill_df = pd.merge(bill_df, origin_df, how="outer")
+        bill_df["original_bill"].fillna(0, inplace=True)
+        bill_df["delta_bill"] = bill_df["bill"] - bill_df["original_bill"]
+        bill_df["mark"] = bill_df["delta_bill"].map(lambda x: 1 if x > 0 else (-1 if x < 0 else 0))
+    # df_out = pd.merge(df_out, df_bill)
+    return bill_df
+
+
+def goods_count(df):
+    counts = df.iloc[0:, 1:].fillna(0).applymap(lambda x: 1 if x != 0 else 0)
+    idol_col = df.iloc[0:,0:1]
+    counts["orders"] = counts.apply(lambda x: sum(x),axis = 1)
+    counts["idol"] = idol_col
+
+    return counts[["idol","orders"]]
+
+
+def format_kidney_table(df):
+    mark_dict = {
+        1: "补",
+        0: "",
+        -1: "退"
+    }
+    try:
+        df["mark"] = df["mark"].map(lambda x: mark_dict.get(x))
+    except:
+        pass
+    df.rename(columns={"buyer": "CN",
+                       "detail": "明细",
+                       "count": "计数",
+                       "bill": "总肾",
+                       "original_bill": "原肾",
+                       "delta_bill": "退补金额",
+                       "mark": "退补标记"}, inplace=True)
+    return df
+
+
+def calc_total_price_pld(sort_df, price_dict):
     sort_df = pd.merge(sort_df, price_dict, how="outer", on=["version", "type", "idol"])
     sort_df["bill"] = sort_df.apply(lambda x: x["count"] * x["new"], axis=1)
     sort_df["count"].fillna(0, inplace=True)
@@ -148,4 +239,8 @@ def calc_total_price_muti(sort_df, price_dict):
 
 
 if __name__ == "__main__":
-    main()
+    path = "tables/诚2团妈位表.xlsx"
+    target_name = path.split(".")[0]
+    # target_dir = "./{}_bill.xlsx".format(target_name)
+    target_dir = "./test_form_bill.xlsx"
+    kidney_maker(path, target_dir)
