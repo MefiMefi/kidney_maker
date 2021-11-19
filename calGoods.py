@@ -4,7 +4,7 @@ import pandas as pd
 
 
 def kidney_maker(source_path, target_dir):
-    df_sort, df_price, df_origin = xlsx_read_and_preprocess(path)
+    df_sort, df_price, df_origin = xlsx_read_and_preprocess(source_path)
     detail_df, sort_df = sort_table(df_sort)
     price_df = adjust_price(df_price)
     origin_df = None if df_origin is None else get_original_bill(df_origin)

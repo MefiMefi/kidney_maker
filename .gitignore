@@ -1,0 +1,8 @@
+/.idea/
+/calGoods/
+*.xlsx
+/venv/
+/winter_normal/
+/test_output/
+/tables/
+/kidney_maker.rar
