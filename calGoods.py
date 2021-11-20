@@ -11,27 +11,7 @@ def kidney_maker(source_path, target_dir):
     bill_df = calc_total_price(sort_df, price_df, detail_df, origin_df)
     bill_df = format_kidney_table(bill_df)
     with pd.ExcelWriter(target_dir) as xlsx_writer:
-        bill_df.to_excel(xlsx_writer, sheet_name="肾表", )
-    # excel_reader = pd.ExcelFile("tables/诚2团妈位表.xlsx")
-    # sheet_names = excel_reader.sheet_names
-    # df_sort = excel_reader.parse(sheet_name=sheet_names[0], header=None)
-    # df_price = excel_reader.parse(sheet_name=sheet_names[1], header=None)
-    # df_origin = excel_reader.parse(sheet_name=sheet_names[2], header=None)
-    # df_origin.columns = ["buyer", "original_bill"]
-    #
-    # detail_df, sort_df = sort_table_pld(df_sort)
-    # price_dict = adjust_price_pld(df_price)
-    #
-    # df_bill = calc_total_price_pld(sort_df, price_dict)
-    # df_all = pd.merge(df_bill, df_origin, how="outer", on="buyer")
-    # df_all["bill"].fillna(0, inplace=True)
-    # df_all["original_bill"].fillna(0, inplace=True)
-    # df_all["additional_bill"] = df_all["bill"] - df_all["original_bill"]
-    # df_all["label"] = df_all["additional_bill"].map(lambda x: "退" if x < 0 else ("补" if x > 0 else ""))
-    # df_out = df_all[['buyer', 'detail', 'count', 'bill', 'original_bill', 'additional_bill',
-    #                  'label']]
-    # df_out.columns = ["CN", "明细", "计数", "总价", "原肾", "退补金额", "退补"]
-    # df_out.to_excel("诚2团_bill.xlsx")
+        bill_df.to_excel(xlsx_writer, sheet_name="肾表", index=None)
 
 
 def xlsx_read_and_preprocess(path):
@@ -160,7 +140,7 @@ def adjust_price_pld(df, special_key="签", normal_keys=["花前", "花后"], un
 
 def get_original_bill(df):
     df.rename(columns={0: "buyer", 1: "original_bill"}, inplace=True)
-    print(df)
+    # print(df)
     return df
 
 
@@ -182,10 +162,13 @@ def calc_total_price(sort_df, price_df, detail_df, origin_df):
     bill_df["bill"].fillna(0, inplace=True)
     if origin_df is not None:
         bill_df = pd.merge(bill_df, origin_df, how="outer")
+        bill_df["count"].fillna(0, inplace=True)
+        bill_df["bill"].fillna(0, inplace=True)
         bill_df["original_bill"].fillna(0, inplace=True)
         bill_df["delta_bill"] = bill_df["bill"] - bill_df["original_bill"]
         bill_df["mark"] = bill_df["delta_bill"].map(lambda x: 1 if x > 0 else (-1 if x < 0 else 0))
     # df_out = pd.merge(df_out, df_bill)
+    # print(bill_df)
     return bill_df
 
 
@@ -215,6 +198,7 @@ def format_kidney_table(df):
                        "original_bill": "原肾",
                        "delta_bill": "退补金额",
                        "mark": "退补标记"}, inplace=True)
+    df["CN_1"] = df["CN"]
     return df
 
 
@@ -223,7 +207,7 @@ def calc_total_price_pld(sort_df, price_dict):
     sort_df["bill"] = sort_df.apply(lambda x: x["count"] * x["new"], axis=1)
     sort_df["count"].fillna(0, inplace=True)
     sort_df = sort_df[["buyer", "version", "type", "idol", "count", "new", "bill"]]
-    print(sort_df)
+    # print(sort_df)
 
     df_detail = sort_df.copy()
     df_detail["detail"] = df_detail.apply(
@@ -239,8 +223,8 @@ def calc_total_price_pld(sort_df, price_dict):
 
 
 if __name__ == "__main__":
-    path = "tables/诚2团妈位表.xlsx"
+    path = "模板表格.xlsx"
     target_name = path.split(".")[0]
     # target_dir = "./{}_bill.xlsx".format(target_name)
-    target_dir = "./test_form_bill.xlsx"
+    target_dir = "./模板表格_bill.xlsx"
     kidney_maker(path, target_dir)
