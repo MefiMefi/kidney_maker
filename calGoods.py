@@ -1,8 +1,9 @@
 import logging
-
+import eel
 import pandas as pd
 
 
+@eel.expose
 def kidney_maker(source_path, target_dir):
     df_sort, df_price, df_origin = xlsx_read_and_preprocess(source_path)
     detail_df, sort_df = sort_table(df_sort)
@@ -101,6 +102,8 @@ def sort_table_pld(df):
 
 
 def adjust_price(df):
+    if len(df.columns) < 4:
+        df["adj"] = 0
     df.columns = ["type", "idol", "avg", "adj"]
     df["adj"].fillna(0, inplace=True)
     df["avg"].fillna(0, inplace=True)
@@ -174,11 +177,11 @@ def calc_total_price(sort_df, price_df, detail_df, origin_df):
 
 def goods_count(df):
     counts = df.iloc[0:, 1:].fillna(0).applymap(lambda x: 1 if x != 0 else 0)
-    idol_col = df.iloc[0:,0:1]
-    counts["orders"] = counts.apply(lambda x: sum(x),axis = 1)
+    idol_col = df.iloc[0:, 0:1]
+    counts["orders"] = counts.apply(lambda x: sum(x), axis=1)
     counts["idol"] = idol_col
 
-    return counts[["idol","orders"]]
+    return counts[["idol", "orders"]]
 
 
 def format_kidney_table(df):
